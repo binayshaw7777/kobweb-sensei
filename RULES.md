@@ -59,3 +59,85 @@
 - In general, you should just be able to run `kobweb create app` and then `cd app/site; kobweb run`
 - Note that you can probably use `deferRender` instead of z-index. It's usually ok if you don't overuse it, but if you start using z-index in multiple places, it becomes complicated to keep track
 - If you unzip the file I shared, then `cd cropperdemo/site; kobweb run`, you should see cropper.js in action
+
+---
+
+## From #discuss
+
+> Design rationale, workarounds, and Compose-different patterns extracted from 12,172 #discuss messages (2021-11-08 to 2026-06-28).
+
+### Styling
+
+- Unlike Android Compose (where multiple padding() modifiers simulate margin), Kobweb uses distinct Modifier.padding() (for CSS padding) and Modifier.margin() (for CSS margin) which map directly to their CSS counterparts.
+- Modifier chaining on Web is flat CSS (last-wins), not nested like Android Compose. Use nested containers for stacked spacing.
+- Using Kotlin stdlib's `.apply` block on a Modifier silently discards chained modifiers (since it returns the original receiver). Use `thenIf` or standard chaining instead.
+- Wrap Modifier instances in `remember { }` to avoid unnecessary child recomposition on Web Compose.
+- styleModifier { property(...) } is the escape hatch for any CSS property Kobweb doesn't wrap.
+- ComponentStyles must be top-level and public (or registered manually via @InitSilk + ctx.theme.registerComponentStyle()).
+- Use ComponentStyles for reusable widgets; use inline Modifier for one-off layouts. ComponentStyles are overkill for single-use.
+- Keyframes must be top-level file properties, not defined inside composable functions — they're statically registered.
+- CSSPosition uses typed Edge class — CenterX/CenterY cannot be combined with offset values (compile error, not runtime).
+- To get CSS 'auto' where only CSSNumeric is accepted: create anonymous CSSNumericValue that toStrings to "auto".
+
+### Silk
+
+- Surface color transitions are opt-in since 0.11.0: pass variant = AnimatedColorSurfaceVariant.
+- SilkPalette is for Silk built-in widgets only — create your own palette for app-specific colors.
+- Every Silk widget follows this contract: ComponentStyle + Modifier + variant + ref.
+- CSS :focus-visible is preferred over :focus for button/keyboard focus rings (prevents mouse-click focus rings).
+- CSS outline does NOT follow clip paths — use borderRadius(50.percent) for rounded focus indicators, not clip.
+- Ref API has 3 flavors: ref(keys) for side effects, disposableRef(keys) { onDispose } for cleanup, refScope { ... } for multiple refs.
+- Lambda-in-lambda wrappers create new instances each recompose — use remember { } for stable references in callbacks.
+- Surface transitions used * selector originally — that wipes child element transitions. Fixed by targeting ' div' only.
+- StyleVariable is Kobweb's own CSS variable class (JB's Compose HTML impl is broken). Cannot use CSS vars in inline styles.
+- Palette colors = public widget contract. CSS variables = internal implementation. Use modifyComponentStyleBase + setVariable to customize.
+- ComponentStyle cannot use attrsModifier inside — use extraModifiers constructor parameter instead.
+
+### Routing
+
+- ctx.route.params["id"] returns empty string "" for missing params, not null — check both null and empty.
+- Route params {id} and {id?} cannot coexist (compiles to same pattern like String vs String?). Use separate /realm/ page.
+- rememberPageContext() leaks into deferRender/tooltips in versions before 0.13.x — upgrade or avoid page context in deferred blocks.
+- For page transitions: use Modifier.transition() + thenIf(routing, opacity(0)) + onTransitionEnd { router.tryRoutingTo() }.
+- Link component renders <a> tag (right-click open in new tab works). Button onClick does NOT support right-click.
+- movableContentOf + CompositionLocal preserves widget state across @Page navigation.
+
+### Server
+
+- Ktor coroutines swallow exceptions silently — use @InitApi History class to log errors, expose via debug endpoint.
+- Kotlin reflection (kotlin-reflect) and Java ServiceLoader may not work on Kobweb Ktor server — classloader doesn't include user code.
+- Full-stack server features get less dev attention since most users prefer static export. Expect less polish.
+- Backend rate limiting with Token Bucket and Fixed Window algorithms available via community PR.
+
+### Build
+
+- Kobweb = Compose for Web + Gradle plugin (code gen + dev server) + optional Silk. 90%+ of code is plugin-independent.
+- Multimodule (since 0.11.0): kobwebx merged into kobweb block, appGlobals → app.globals. Library modules use com.varabyte.kobweb.library plugin.
+- Kotlin 1.9.0 + Compose 1.4.3 has JS IR compiler bug (KT-60852) — hold off until 1.9.10+.
+- conf.yaml predates Gradle plugin — server config (ports, scripts) stays in YAML; build concerns in Gradle.
+- Kobweb disables Compose TRACE code (Android-only) to reduce production bundle size.
+- Kotlin/JS Gradle plugin ignores Node.js download=false config — still tries to download Node regardless of setting.
+
+### Deployment
+
+- --layout static is recommended over Kobweb server for most deployments (GitHub Pages, Netlify, Vercel, Firebase).
+- Kobweb inherits single-JS-file output from Compose for Web — no code splitting. Mitigate with dynamic routes or separate subdomain projects.
+- Static export snapshots only capture currently visible elements. Content behind if (state) won't appear in exported HTML for crawlers. Use ctx.isExporting check.
+- Split landing page and webapp into separate Kobweb subdomain projects (domain.com vs app.domain.com) for smaller bundles and better SEO.
+- Markdown-heavy builds bottleneck on Terser minification (~10 min) and unparallelized snapshot generation (~7 min).
+- CSS layers broke old iPhone users (older Safari) — check browser baseline before using new CSS features.
+- During kobweb export, side effects like window.location.replace() run server-side and can break. Check ctx.params for 'kobweb-export' key.
+- Per-page SEO meta tags: use document.createElement('meta') + document.head.appendChild() — NOT document.head.append(string) which escapes HTML.
+
+### General
+
+- Kobweb is client-side only — no SSR. Fetch raw data from server, build UI on client. Consider Kilua if SSR needed.
+- DI frameworks (Hilt, Koin) are unnecessary in Kobweb/Compose — use `val x = remember { UseCase() }` directly.
+- LaunchedEffect(key) + delay() provides native debouncing — coroutine cancels and restarts on key change.
+- deferRender creates a separate rendering layer — elements always appear on top, no z-index needed.
+- Overlay transitions need batched delay — browsers process DOM additions before removals regardless of call order.
+- Disabled HTML elements (Button, Input) stop mouse events entirely — tooltips need wrapper element.
+- CSS opacity(0) creates a stacking context — fix overlapping content with styleModifier { property("isolation", "isolate") }.
+- GitHub Gist embedding needs postscribe library workaround (document.write doesn't work after page load).
+- Kobweb/Compose HTML cannot share UI code with Android/iOS/Desktop (unlike Compose Multiplatform which is Canvas-based).
+- Compose Multiplatform (canvas) can't replace DOM-based UI for SEO, a11y, devtools, print stylesheets.

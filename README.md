@@ -6,7 +6,8 @@ Curated Kobweb knowledge — reference manual + Discord FAQ — extracted from t
 
 | File | Lines | Content |
 |------|-------|---------|
-| `SKILLS.md` | 5232 | Reference (735 lines) + 351 problem→solution entries from Discord |
+| `SKILLS.md` | 742 | Kobweb reference manual |
+| `FAQ.md` | 4496 | 351 problem→solution entries from Discord |
 | `RULES.md` | 61 | Compact gotchas for Routing, Styling, Silk, Server, Build, Deployment |
 
 ## Source
@@ -18,13 +19,13 @@ Processor: Python script threads conversations by time/mentions, filters for bit
 
 ```bash
 # Search for a fix
-grep -A 10 "### scroll" SKILLS.md
+grep -A 10 "### scroll" FAQ.md
 
 # List all fix titles
-grep "^### " SKILLS.md
+grep "^### " FAQ.md
 
 # Search by category
-awk '/^### Styling/,/^### Routing/' SKILLS.md | head -40
+awk '/^### Styling/,/^### Routing/' FAQ.md | head -40
 ```
 
 ## Key: Entry Format
